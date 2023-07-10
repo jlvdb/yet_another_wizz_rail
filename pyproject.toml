@@ -1,69 +1,75 @@
-[project]
-name = "pz-rail-yaw"
-license = {file = "LICENSE"}
-readme = "README.md"
-authors = [
-    { name = "LSST Dark Energy Science Collaboration (DESC)", email = "jlvdb@astro.rub.de" }
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python",
-]
-dynamic = ["version"]
-
-dependencies = []
-
-# On a mac, install optional dependencies with `pip install '.[dev]'` (include the single quotes)
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov", # Used to report total code coverage
-    "pre-commit", # Used to run checks before finalizing a git commit
-    "pylint", # Used for static linting of files
-]
-
 [build-system]
-requires = [
-    "setuptools>=62", # Used to build and package the Python project
-    "setuptools_scm>=6.2", # Gets release version from git. Makes it available programmatically
-]
+requires = ["setuptools>=61.0", "numpy"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools_scm]
-write_to = "src/rail/yaw/_version.py"
+[project]
+name = "yet_another_wizz_rail"
+dynamic = ["version"]
+authors = [
+    {name = "Jan Luca van den Busch", email = "jlvdb@astro.ruhr-uni-bochum.de"},
+]
+description = "Interface for yet_another_wizz for the LSST DESC RAIL package."
+readme = "README.rst"
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "yet_another_wizz>=2.5.2",
+]
 
-[tools.setuptools.packages.find]
-where = ["."]
-include = ["rail"]
-namespaces = true
+[project.optional-dependencies]
+test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+]
+style = [
+    "black",
+    "isort",
+    "flake8",
+    "pre-commit",
+]
+dev = [
+    "yet_another_wizz_rail[test]",
+    "yet_another_wizz_rail[style]",
+    "ipykernel",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "yaw_rail.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
 ]
 addopts = [
-    "--cov=rail",
-    "--cov-report=html"
+    "--cov=yaw_rail",
+    "--cov-report=xml",
 ]
 
-[tool.pylint]
-disable = [
-    "abstract-method",
-    "invalid-name",
-    "too-many-statements",
-    "missing-module-docstring",
-    "missing-class-docstring",
-    "missing-function-docstring",
-    "too-few-public-methods",
-    "duplicate-code",
-    "use-dict-literal",
-    "broad-exception-caught",
-]
-max-line-length = 110
-max-locals = 50
-max-branches = 25
-max-public-methods = 50
+[tool.isort]
+profile = "black"
+
+[tool.black]
+include = ".pyi?$"
+exclude = """
+/(
+    .git
+    | .hg
+    | .mypy_cache
+    | .tox
+    | .venv
+    | _build
+    | buck-out
+    | build
+    | dist
+)/
+"""
