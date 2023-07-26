@@ -20,6 +20,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     "yet_another_wizz>=2.5.2",
+    "pz-rail-base",
 ]
 
 [project.optional-dependencies]
