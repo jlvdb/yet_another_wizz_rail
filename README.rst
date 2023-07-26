@@ -20,7 +20,7 @@ RAIL plugin
 ===========
 
 *yet_another_wizz_rail* implements a plugin interface for the
-`LSST-DESC RAIL<https://github.com/LSSTDESC/rail_base/tree/main>`_ redshift
+`LSST-DESC RAIL <https://github.com/LSSTDESC/rail_base/tree/main>`_ redshift
 inference pipeline line interface for the clustering redshift code
 `yet_another_wizz <https://github.com/jlvdb/yet_another_wizz>`_:
 
