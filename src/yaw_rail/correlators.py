@@ -41,7 +41,7 @@ class YAWCorrelatorBase(ABC, RailStage):
         for cat in cats[1:]:
             if len(cat) > len(longest):
                 longest = cat
-        return PatchLinkage.from_setup(self.setup.get_yaw_config(), longest)
+        return PatchLinkage.from_setup(self.setup.analysis, longest)
 
     def build_catalog(self, tag: str, handle: TableHandle | None) -> BaseCatalog | None:
         if handle is None:
@@ -51,9 +51,9 @@ class YAWCorrelatorBase(ABC, RailStage):
         if not isinstance(data, pd.DataFrame):
             raise TypeError(f"handle for {tag=} must provide a pandas.DataFrame")
         # build the catalog
-        cache_directory = str(self.setup.get_cache_path() / f"cache_{tag}")
+        cache_directory = str(self.setup.data.get_cache_path() / f"cache_{tag}")
         return self.factory.from_dataframe(
-            data, **self.setup.columns.to_dict(), cache_directory=cache_directory
+            data, **self.setup.data.get_colnames(), cache_directory=cache_directory
         )
 
     def finalize(
@@ -105,9 +105,7 @@ class YAWCrossCorr(YAWCorrelatorBase):
         else:
             links = self.set_data("linkage", linkage)
         # run the computation
-        corrfunc = yaw.crosscorrelate(
-            self.setup.get_yaw_config(), linkage=links, **catalogs
-        )
+        corrfunc = yaw.crosscorrelate(self.setup.analysis, linkage=links, **catalogs)
         # retrieve the results
         self.finalize(corrfunc, links)
         return self.get_handle("corrfunc"), self.get_handle("linkage")
@@ -137,9 +135,7 @@ class YAWAutoCorr(YAWCorrelatorBase):
         else:
             links = self.set_data("linkage", linkage)
         # run the computation
-        corrfunc = yaw.autocorrelate(
-            self.setup.get_yaw_config(), linkage=links, **catalogs
-        )
+        corrfunc = yaw.autocorrelate(self.setup.analysis, linkage=links, **catalogs)
         # retrieve the results
         self.finalize(corrfunc, links)
         return self.get_handle("corrfunc"), self.get_handle("linkage")
