@@ -40,10 +40,12 @@ class DataConfig(BaseConfig):
     """
 
     ra_name: str = field(
-        metadata=Parameter(type=str, help="right ascension column name")
+        metadata=Parameter(type=str, required=True, help="right ascension column name")
     )
     """Right ascension column name."""
-    dec_name: str = field(metadata=Parameter(type=str, help="declination column name"))
+    dec_name: str = field(
+        metadata=Parameter(type=str, required=True, help="declination column name")
+    )
     """Declination column name."""
     patch_name: str = field(
         metadata=Parameter(type=str, help="patch index column name")
@@ -87,7 +89,7 @@ class DataConfig(BaseConfig):
 
     def get_colnames(self) -> dict[str, str]:
         ignore = {"cache_path"}
-        return {k: v for k, v in self.to_dict() if k not in ignore}
+        return {k: v for k, v in self.to_dict().items() if k not in ignore}
 
     def get_cache_path(self) -> pathlib.Path:
         return pathlib.Path(self.cache_path)
@@ -229,8 +231,6 @@ def config_to_stageparams(config: BaseConfig) -> dict[str, StageParameter]:
         raise TypeError("'config' must be an instance of 'BaseConfig'")
     stageparams = dict()
     for cfield in fields(config):
-        if not cfield.init:
-            continue
         try:
             parameter = Parameter.from_field(cfield)
             kwargs = dict(
@@ -240,12 +240,13 @@ def config_to_stageparams(config: BaseConfig) -> dict[str, StageParameter]:
             )
             if not isinstance(cfield.default, type(MISSING)):
                 kwargs["default"] = cfield.default
-            else:
-                kwargs["required"] = True
             stageparams[cfield.name] = StageParameter(**kwargs)
         except TypeError:
             attr = getattr(config, cfield.name)
-            stageparams.update(config_to_stageparams(attr))
+            try:
+                stageparams.update(config_to_stageparams(attr))
+            except TypeError:
+                continue
     return stageparams
 
 
