@@ -9,7 +9,7 @@ from rail.core.data import DataHandle, ModelHandle, TableHandle
 from rail.core.stage import RailStage
 from yaw.catalogs import BaseCatalog, PatchLinkage
 
-from yaw_rail.config import SetupConfig, config_to_stageparams
+from yaw_rail.config import SetupConfig, config_to_stageparams, default_setup
 from yaw_rail.data import CorrFuncHandle
 
 # TODO: choose good default cache location
@@ -18,7 +18,7 @@ from yaw_rail.data import CorrFuncHandle
 class YAWCorrelatorBase(ABC, RailStage):
     name = "YAWCorrelatorBase"
     config_options = RailStage.config_options.copy()
-    config_options.update(config_to_stageparams(SetupConfig))
+    config_options.update(config_to_stageparams(default_setup))
     outputs = [
         ("corrfunc", CorrFuncHandle),
         ("linkage", ModelHandle),

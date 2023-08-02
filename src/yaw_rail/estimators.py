@@ -4,13 +4,13 @@ import yaw
 from rail.core.data import Hdf5Handle, QPHandle, TableHandle
 from rail.core.stage import RailStage
 
-from yaw_rail.config import config_to_stageparams
+from yaw_rail.config import config_to_stageparams, default_resampling
 
 
 class YAWEstimator(RailStage):
     name = "YAWEstimator"
     config_options = RailStage.config_options.copy()
-    config_options.update(config_to_stageparams(yaw.ResamplingConfig))
+    config_options.update(config_to_stageparams(default_resampling))
     inputs = [
         ("cross_corr", Hdf5Handle),
         ("ref_corr", Hdf5Handle),

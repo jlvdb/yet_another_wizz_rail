@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import pathlib
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from typing import Any
 
 import numpy as np
-import yaw
 from ceci.config import StageParameter
 from numpy.typing import ArrayLike, NDArray
+from yaw.config import Configuration, ResamplingConfig
 from yaw.config import default as DEFAULT
 from yaw.config.abc import BaseConfig
 from yaw.config.utils import ConfigError, parse_section_error
@@ -39,22 +39,27 @@ class DataConfig(BaseConfig):
             Path to directory where data is cached.
     """
 
-    ra_name: str = field(metadata=Parameter(help="right ascension column name"))
+    ra_name: str = field(
+        metadata=Parameter(type=str, help="right ascension column name")
+    )
     """Right ascension column name."""
-    dec_name: str = field(metadata=Parameter(help="declination column name"))
+    dec_name: str = field(metadata=Parameter(type=str, help="declination column name"))
     """Declination column name."""
-    patch_name: str = field(metadata=Parameter(help="patch index column name"))
+    patch_name: str = field(
+        metadata=Parameter(type=str, help="patch index column name")
+    )
     """Patch index column name."""
     redshift_name: str | None = field(
-        default=None, metadata=Parameter(help="redshifts column name")
+        default=None, metadata=Parameter(type=str, help="redshifts column name")
     )
     """Redshifts column name."""
     weight_name: str | None = field(
-        default=None, metadata=Parameter(help="weights column name")
+        default=None, metadata=Parameter(type=str, help="weights column name")
     )
     """Weights column name."""
     cache_path: str | None = field(
-        default=None, metadata=Parameter(help="path to directory where data is cached")
+        default=None,
+        metadata=Parameter(type=str, help="path to directory where data is cached"),
     )
     """Path to directory where data is cached."""
 
@@ -90,7 +95,7 @@ class DataConfig(BaseConfig):
 
 @dataclass(frozen=True)
 class SetupConfig(BaseConfig):
-    analysis: yaw.Configuration
+    analysis: Configuration
     data: DataConfig
 
     @classmethod
@@ -121,7 +126,7 @@ class SetupConfig(BaseConfig):
         weight_name: str | None = None,
         cache_path: str | None = None,
     ) -> SetupConfig:
-        yaw_conf = yaw.Configuration.create(
+        yaw_conf = Configuration.create(
             cosmology=cosmology,
             rmin=rmin,
             rmax=rmax,
@@ -201,15 +206,15 @@ class SetupConfig(BaseConfig):
     @classmethod
     def from_dict(cls, the_dict: dict[str, Any], **kwargs) -> SetupConfig:
         config = {k: v for k, v in the_dict.items()}
-        # remove all keys that are not part of yaw.Configuration
+        # remove all keys that are not part of Configuration
         try:
             analysis_dict = config.pop("analysis")
-            analysis = yaw.Configuration.from_dict(analysis_dict)
+            analysis = Configuration.from_dict(analysis_dict)
         except (TypeError, KeyError) as e:
             parse_section_error(e, "analysis")
         try:
             data_dict = config.pop("data")
-            data = yaw.Configuration.from_dict(data_dict)
+            data = Configuration.from_dict(data_dict)
         except (TypeError, KeyError) as e:
             parse_section_error(e, "data")
         # check that there are no entries left
@@ -219,26 +224,32 @@ class SetupConfig(BaseConfig):
         return cls(analysis=analysis, data=data)
 
 
-def config_to_stageparams(config: Any) -> dict[str, StageParameter]:
-    flat_dict = dict()
-    for dfield in fields(config):
+def config_to_stageparams(config: BaseConfig) -> dict[str, StageParameter]:
+    if not isinstance(config, BaseConfig):
+        raise TypeError("'config' must be an instance of 'BaseConfig'")
+    stageparams = dict()
+    for cfield in fields(config):
+        if not cfield.init:
+            continue
         try:
-            flat_dict.update(config_to_stageparams(dfield.type))
-        except TypeError:
-            meta = dfield.metadata
-            if not isinstance(meta, Parameter):
-                raise TypeError(f"missing metadata for parameter '{dfield.name}'")
-            meta: Parameter
-            flat_dict[dfield.name] = StageParameter(
-                default=dfield.default,
-                dtype=meta.type,
-                required=meta.required,
-                msg=meta.help,
+            parameter = Parameter.from_field(cfield)
+            kwargs = dict(
+                dtype=parameter.type,
+                required=parameter.required,
+                msg=parameter.help,
             )
-    return flat_dict
+            if not isinstance(cfield.default, type(MISSING)):
+                kwargs["default"] = cfield.default
+            else:
+                kwargs["required"] = True
+            stageparams[cfield.name] = StageParameter(**kwargs)
+        except TypeError:
+            attr = getattr(config, cfield.name)
+            stageparams.update(config_to_stageparams(attr))
+    return stageparams
 
 
-default_config = SetupConfig.create(
+default_setup = SetupConfig.create(
     rmin=100.0,
     rmax=1000.0,
     zmin=0.01,
@@ -250,3 +261,4 @@ default_config = SetupConfig.create(
     redshift_name="redshift",
     weight_name="weight",
 )
+default_resampling = ResamplingConfig.create()
