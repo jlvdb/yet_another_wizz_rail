@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import shutil
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from pathlib import Path
 
 import pandas as pd
 import yaw
@@ -9,7 +11,7 @@ from rail.core.data import DataHandle, ModelHandle, TableHandle
 from rail.core.stage import RailStage
 from yaw.catalogs import BaseCatalog, PatchLinkage
 
-from yaw_rail.config import SetupConfig, config_to_stageparams
+from yaw_rail.config import SetupConfig, config_to_stageparams, default_setup
 from yaw_rail.data import CorrFuncHandle
 
 # TODO: choose good default cache location
@@ -18,7 +20,7 @@ from yaw_rail.data import CorrFuncHandle
 class YAWCorrelatorBase(ABC, RailStage):
     name = "YAWCorrelatorBase"
     config_options = RailStage.config_options.copy()
-    config_options.update(config_to_stageparams(SetupConfig))
+    config_options.update(config_to_stageparams(default_setup))
     outputs = [
         ("corrfunc", CorrFuncHandle),
         ("linkage", ModelHandle),
@@ -33,7 +35,12 @@ class YAWCorrelatorBase(ABC, RailStage):
         RailStage.__init__(self, args, comm=comm)
         # set up data management
         self.factory = yaw.NewCatalog()  # TODO: implement backend options
-        self.setup = SetupConfig.from_dict(self.config_options)
+        params = set(self.config_options) - set(RailStage.config_options)
+        kwargs = {
+            param: value for param, value in self.config.items() if param in params
+        }
+        self.setup = SetupConfig.create(**kwargs)
+        self._caches: set[Path] = set()
 
     def build_linkage(self, catalogs: Iterable[BaseCatalog]) -> PatchLinkage:
         cats = list(catalogs)
@@ -41,7 +48,7 @@ class YAWCorrelatorBase(ABC, RailStage):
         for cat in cats[1:]:
             if len(cat) > len(longest):
                 longest = cat
-        return PatchLinkage.from_setup(self.setup.get_yaw_config(), longest)
+        return PatchLinkage.from_setup(self.setup.analysis, longest)
 
     def build_catalog(self, tag: str, handle: TableHandle | None) -> BaseCatalog | None:
         if handle is None:
@@ -49,11 +56,13 @@ class YAWCorrelatorBase(ABC, RailStage):
         # put the data in the datastore
         data = self.set_data(tag, handle)
         if not isinstance(data, pd.DataFrame):
-            raise TypeError(f"handle for {tag=} must provide a pandas.DataFrame")
+            data: pd.DataFrame = data.to_pandas()
         # build the catalog
-        cache_directory = str(self.setup.get_cache_path() / f"cache_{tag}")
+        cache_directory = self.setup.data.get_cache_path() / f"cache_{tag}"
+        cache_directory.mkdir()
+        self._caches.add(cache_directory)
         return self.factory.from_dataframe(
-            data, **self.setup.columns.to_dict(), cache_directory=cache_directory
+            data, **self.setup.data.get_colnames(), cache_directory=str(cache_directory)
         )
 
     def finalize(
@@ -65,6 +74,10 @@ class YAWCorrelatorBase(ABC, RailStage):
         except AttributeError:
             self.set_data("corrfunc", corrfunc)
         self.set_data("linkage", linkage)
+
+    def drop_cache(self) -> None:
+        while len(self._caches) > 0:
+            shutil.rmtree(self._caches.pop())
 
     @abstractmethod
     def correlate(
@@ -88,26 +101,29 @@ class YAWCrossCorr(YAWCorrelatorBase):
     def correlate(
         self,
         reference: TableHandle,
-        unkown: TableHandle,
+        unknown: TableHandle,
         ref_rand: TableHandle | None = None,
         unk_rand: TableHandle | None = None,
         linkage: ModelHandle | None = None,
     ) -> tuple[CorrFuncHandle, ModelHandle]:
-        # collect the inputs and build catalog instances
-        catalogs = dict(
-            reference=self.build_catalog("reference", reference),
-            unkown=self.build_catalog("unkown", unkown),
-            ref_rand=self.build_catalog("ref_rand", ref_rand),
-            unk_rand=self.build_catalog("unk_rand", unk_rand),
-        )
-        if linkage is None:
-            links = self.build_linkage(catalogs.values())
-        else:
-            links = self.set_data("linkage", linkage)
-        # run the computation
-        corrfunc = yaw.crosscorrelate(
-            self.setup.get_yaw_config(), linkage=links, **catalogs
-        )
+        try:
+            # collect the inputs and build catalog instances
+            catalogs = dict(
+                reference=self.build_catalog("reference", reference),
+                unknown=self.build_catalog("unknown", unknown),
+                ref_rand=self.build_catalog("ref_rand", ref_rand),
+                unk_rand=self.build_catalog("unk_rand", unk_rand),
+            )
+            if linkage is None:
+                links = self.build_linkage(catalogs.values())
+            else:
+                links = self.set_data("linkage", linkage)
+            # run the computation
+            corrfunc = yaw.crosscorrelate(
+                self.setup.analysis, linkage=links, **catalogs
+            )
+        finally:
+            self.drop_cache()
         # retrieve the results
         self.finalize(corrfunc, links)
         return self.get_handle("corrfunc"), self.get_handle("linkage")
@@ -127,19 +143,20 @@ class YAWAutoCorr(YAWCorrelatorBase):
         random: TableHandle,
         linkage: ModelHandle | None = None,
     ) -> tuple[CorrFuncHandle, ModelHandle]:
-        # collect the inputs and build catalog instances
-        catalogs = dict(
-            reference=self.build_catalog(reference),
-            unkown=self.build_catalog(random),
-        )
-        if linkage is None:
-            links = self.build_linkage(catalogs.values())
-        else:
-            links = self.set_data("linkage", linkage)
-        # run the computation
-        corrfunc = yaw.autocorrelate(
-            self.setup.get_yaw_config(), linkage=links, **catalogs
-        )
+        try:
+            # collect the inputs and build catalog instances
+            catalogs = dict(
+                reference=self.build_catalog(reference),
+                unkown=self.build_catalog(random),
+            )
+            if linkage is None:
+                links = self.build_linkage(catalogs.values())
+            else:
+                links = self.set_data("linkage", linkage)
+            # run the computation
+            corrfunc = yaw.autocorrelate(self.setup.analysis, linkage=links, **catalogs)
+        finally:
+            self.drop_cache()
         # retrieve the results
         self.finalize(corrfunc, links)
         return self.get_handle("corrfunc"), self.get_handle("linkage")
